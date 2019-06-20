@@ -1,6 +1,6 @@
 {
-    "dataset_name" : "COCO/val2017",
-    "annFile" : "COCO/annotations/instances_val2017.json",
+    "dataset_name" : "..COCO/val2017",
+    "annFile" : "..COCO/annotations/instances_val2017.json",
     "backbone_name" : "vgg16",
     
     "min_size" : "600",

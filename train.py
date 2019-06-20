@@ -18,7 +18,7 @@ from torch.autograd import Variable
 from tqdm import tqdm
 from torch.utils.data import DataLoader
 from coco import CocoDetection
-
+from backbone import vgg16
 #parser = argparse.ArgumentParser()
 #parser.add_argument('--data_dir', default='', help="Directory containing the dataset")
 #parser.add_argument('--model_dir', default='experiments/base_model', help="Directory containing params.json")
@@ -28,7 +28,8 @@ from coco import CocoDetection
 
 def train(dataset, batch_size, backbone_name,):
     dataloader = DataLoader(dataset,batch_size,num_workers=4)   
-    backbone = Backbon
+    backbone_cnn = vgg16(pretrained = True)
+    
     
     return temp
 if __name__ == '__main__':
