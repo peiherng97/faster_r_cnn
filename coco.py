@@ -25,13 +25,13 @@ class CocoDetection(VisionDataset):
             target and transforms it.
     """
 
-    def __init__(self, root, annFile, transform=None, target_transform=None, transforms=None):
+    def __init__(self, root, annFile, min_size, max_size, transform=None, target_transform=None, transforms=None):
         super(CocoDetection, self).__init__(root, transforms, transform, target_transform)
         from pycocotools.coco import COCO
         self.coco = COCO(annFile)
         self.ids = list(sorted(self.coco.imgs.keys()))
-        self.min_size = 600
-        self.max_size = 1000
+        self.min_size = min_size
+        self.max_size = max_size
 
     @staticmethod
     def preprocess(img, min_size, max_size):
@@ -72,22 +72,21 @@ class CocoDetection(VisionDataset):
         
         bboxes_gt = [torch.Tensor(ann['bbox']) for ann in annotation] 
         category_id = [ann['category_id'] for ann in annotation] 
-        print(category_id)
         path = coco.loadImgs(img_id)[0]['file_name']
         img = Image.open(os.path.join(self.root, path)).convert('RGB')
         scale,img = self.preprocess(img=img,min_size=600,max_size=1000)
         bboxes_gt = [torch.mul(bbox_coords,scale) for bbox_coords in bboxes_gt]
-        print(bboxes_gt)
         return img_id, img, scale, bboxes_gt, category_id
+
 
     def __len__(self):
         return len(self.ids)
     
 
     
-root = 'val2017'
-annFile = 'annotations_trainval2017/annotations/instances_val2017.json'
-coco = CocoDetection(root = root, annFile = annFile)
-temp = coco.__getitem__(10)
-npimg = temp[1].numpy()
-plt.imshow(np.transpose(npimg, (1,2,0)),interpolation='nearest')
+#root = 'COCO/val2017'
+#annFile = 'COCO/annotations/instances_val2017.json'
+#coco = CocoDetection(root = root, annFile = annFile)
+#temp = coco.__getitem__(10)
+#npimg = temp[1].numpy()
+#plt.imshow(np.transpose(npimg, (1,2,0)),interpolation='nearest')
