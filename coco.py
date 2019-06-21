@@ -84,9 +84,9 @@ class CocoDetection(VisionDataset):
     
 
     
-#root = 'COCO/val2017'
-#annFile = 'COCO/annotations/instances_val2017.json'
-#coco = CocoDetection(root = root, annFile = annFile)
+root = 'COCO/val2017'
+annFile = 'COCO/annotations/instances_val2017.json'
+coco = CocoDetection(root = root, annFile = annFile)
 #temp = coco.__getitem__(10)
 #npimg = temp[1].numpy()
 #plt.imshow(np.transpose(npimg, (1,2,0)),interpolation='nearest')
