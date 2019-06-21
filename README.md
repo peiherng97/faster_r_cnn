@@ -5,4 +5,6 @@ bbox.py \
 __Unfinished__ : \
 coco.py \
 region_proposal_network.py \
-vision.py 
+vision.py \
+
+Follow instructions on https://github.com/potterhsu/easy-faster-rcnn.pytorch to compile NMS and ROI modules 
