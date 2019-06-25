@@ -108,4 +108,31 @@ class Model(nn.Module):
             labels[proposal_max_ious < 0.5] = 0
             fg_masks = proposal_max_ious >= 0.5
             if len(fg_masks.nonzero()) > 0:
-                labels[fg_masks] = gt_classes_batch[f]
+                labels[fg_masks] = gt_classes_batch[fg_masks.nonzero()[:,0],proposal_assignments[fg_masks]]
+            fg_indices = (labels > 0).nonzero()
+            bg_indices = (labels == 0).nonzero()
+            '''Permutation on the indices to randomize'''
+            fg_indices = fg_indices[torch.randperm(len(fg_indices))[:min(len(fg_indices),32*batch_size)]]
+            bg_indices = bg_indices[torch.randperm(len(bg_indices))[:128 * batch_size - len(fg_indices)]]
+            selected_indices = torch.cat([fg_indices,bg_indices],dim=0)
+            selected_indices = selected_indices[torch.randperm(len(selected_indices))].unbind(dim=1)
+            
+            proposal_bboxes = proposal_bboxes[selected_indices]
+            gt_bboxes = gt_bboxes_batch[selected_indices[0],proposal_assignments[selected_indices]]
+            gt_proposal_classes = labels[selected_indices]
+            gt_proposal_transformers = BBox.calc_transformer(proposal_bboxes,gt_bboxes)
+            batch_indices = selected_indices[0]
+
+            pool = Pooler.apply(features,proposal_bboxes,proposal_batch_indices,mode=self._pooler_mode)
+            hidden = self.hidden(pool)
+            hidden = F.adaptive_max_pool2d(input=hidden,output_size=1)
+            hidden = hidden.view(hidden.shape[0],-1)
+            
+            proposal_classes = self._proposal_class(hidden)
+            proposal_transformers = self._proposal_transformer(hidden)
+            proposal_class_losses, proposal_transformer_losses = self.loss(proposal_classes,proposal_transformers,gt_proposal_classes,gt_proposal_transformers,batch_size,batch_indices)
+            
+            return proposal_classes,proposal_transformers, proposal_class_losses, proposal_transformer_losses
+        
+        def loss(self,propsoal_classes,proposal_transformers,gt_proposal_classes,gt_proposal_transformers):
+            proposal_transformers = proposal_transformers.view(-1,self.num_classes,4)[]
