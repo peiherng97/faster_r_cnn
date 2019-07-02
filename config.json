@@ -1,10 +1,14 @@
 {
-    "dataset_name" : "..COCO/val2017",
-    "annFile" : "..COCO/annotations/instances_val2017.json",
+    "dataset_name" : "COCO/val2017",
+    "annFile" : "COCO/annotations/instances_val2017.json",
     "backbone_name" : "vgg16",
-    
-    "min_size" : "600",
-    "max_size" : "1000",
+    "epochs" : 20,
+    "min_size" : 600,
+    "max_size" : 1000,
+    "num_classes" : 92,
+    "anchor_ratios" : [0.5,1,1.5],
+    "anchor_sizes" : [128,256,512],
+
 
     
     "RPN_PRE_NMS_TOP_N" : 12000,

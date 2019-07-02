@@ -42,13 +42,8 @@ class RegionProposalNetwork(nn.Module):
         features = self._features(features)
         anchor_objectnesses = self._anchor_objectness(features)
         anchor_transformers = self._anchor_transformer(features)
-        print('anchor_objectness shape',anchor_objectnesses.shape)
-        print('anchor_transformers shape',anchor_transformers.shape)
         anchor_objectnesses = anchor_objectnesses.permute(0, 2, 3, 1).contiguous().view(batch_size, -1, 2)
         anchor_transformers = anchor_transformers.permute(0, 2, 3, 1).contiguous().view(batch_size, -1, 4)
-        print('anchor_objectness shape',anchor_objectnesses.shape)
-        print('anchor_transformers shape',anchor_transformers.shape)
-
 
         if not self.training:
             return anchor_objectnesses, anchor_transformers
@@ -59,18 +54,11 @@ class RegionProposalNetwork(nn.Module):
             inside_anchor_bboxes = anchor_bboxes[inside_indices].view(batch_size, -1, anchor_bboxes.shape[2])
             inside_anchor_objectnesses = anchor_objectnesses[inside_indices].view(batch_size, -1, anchor_objectnesses.shape[2])
             inside_anchor_transformers = anchor_transformers[inside_indices].view(batch_size, -1, anchor_transformers.shape[2])
-            print('inside_anchor_bboxes',inside_anchor_bboxes.shape)
             # find labels for each `anchor_bboxes`
             labels = torch.full((batch_size, inside_anchor_bboxes.shape[1]), -1, dtype=torch.long, device=inside_anchor_bboxes.device)
             ious = BBox.iou(inside_anchor_bboxes, gt_bboxes_batch)
-            print('labels shape', labels.shape)
-            print('ious shape',ious.shape)
             anchor_max_ious, anchor_assignments = ious.max(dim=2) #pick the highest iou with the ground truth box
-            print('anchor max iou',anchor_max_ious.shape)
-            print('anchor_assignments',anchor_assignments.shape)
             gt_max_ious, gt_assignments = ious.max(dim=1)
-            print('gt_max_ious',gt_max_ious.shape)
-            print('gt_assignments',gt_assignments.shape)
             anchor_additions = ((ious > 0) & (ious == gt_max_ious.unsqueeze(dim=1))).nonzero()[:, :2].unbind(dim=1)
             labels[anchor_max_ious < 0.3] = 0
             labels[anchor_additions] = 1
@@ -82,7 +70,6 @@ class RegionProposalNetwork(nn.Module):
             bg_indices = bg_indices[torch.randperm(len(bg_indices))[:256 * batch_size - len(fg_indices)]]
             selected_indices = torch.cat([fg_indices, bg_indices], dim=0)
             selected_indices = selected_indices[torch.randperm(len(selected_indices))].unbind(dim=1)
-            print(inside_anchor_bboxes[0])
             inside_anchor_bboxes = inside_anchor_bboxes[selected_indices]
             gt_bboxes = gt_bboxes_batch[selected_indices[0], anchor_assignments[selected_indices]]
             gt_anchor_objectnesses = labels[selected_indices]
@@ -145,26 +132,16 @@ class RegionProposalNetwork(nn.Module):
 
     def generate_proposals(self, anchor_bboxes: Tensor, objectnesses: Tensor, transformers: Tensor, image_width: int, image_height: int) -> Tensor:
         batch_size = anchor_bboxes.shape[0]
-        print('anchor box shape',anchor_bboxes.shape)
-        print('objectness shape',objectnesses.shape)
         proposal_bboxes = BBox.apply_transformer(anchor_bboxes, transformers)
         proposal_bboxes = BBox.clip(proposal_bboxes, left=0, top=0, right=image_width, bottom=image_height)
         proposal_probs = F.softmax(objectnesses[:, :, 1], dim=-1)
-        print('proposal boxes shape', proposal_bboxes.shape)
-        print('proposal probs', proposal_probs.shape)
 
         _, sorted_indices = torch.sort(proposal_probs, dim=-1, descending=True)
         nms_proposal_bboxes_batch = []
-        print('sorted_indices',sorted_indices)
-        print('sorted_indices shape',sorted_indices.shape)
-        print('sorted_indices',sorted_indices[0].shape)
         for batch_index in range(batch_size):
-#            print(proposal_bboxes[batch_index][sorted_indices[batch_index]][0].shape)
             sorted_bboxes = proposal_bboxes[batch_index][sorted_indices[batch_index]][:self._pre_nms_top_n]
             sorted_probs = proposal_probs[batch_index][sorted_indices[batch_index]][:self._pre_nms_top_n]
             threshold = 0.7
-            print('sorted_bboxes',sorted_bboxes.shape)
-            print('_pre_nms',self._pre_nms_top_n)
             kept_indices = nms(sorted_bboxes, sorted_probs, threshold)
             nms_bboxes = sorted_bboxes[kept_indices][:self._post_nms_top_n]
             nms_proposal_bboxes_batch.append(nms_bboxes)

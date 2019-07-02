@@ -70,12 +70,16 @@ class CocoDetection(VisionDataset):
         ann_ids = coco.getAnnIds(imgIds=img_id)
         annotation = coco.loadAnns(ann_ids)
         
-        bboxes_gt = [torch.Tensor(ann['bbox']) for ann in annotation] 
+        bboxes_gt = [ann['bbox'] for ann in annotation] 
         category_id = [ann['category_id'] for ann in annotation] 
+        
+        bboxes_gt = torch.tensor(bboxes_gt, dtype=torch.float)
+        category_id = torch.tensor(category_id, dtype=torch.long)
+
         path = coco.loadImgs(img_id)[0]['file_name']
         img = Image.open(os.path.join(self.root, path)).convert('RGB')
         scale,img = self.preprocess(img=img,min_size=600,max_size=1000)
-        bboxes_gt = [torch.mul(bbox_coords,scale) for bbox_coords in bboxes_gt]
+        bboxes_gt = bboxes_gt * scale
         return img_id, img, scale, bboxes_gt, category_id
 
 
@@ -84,9 +88,9 @@ class CocoDetection(VisionDataset):
     
 
     
-root = 'COCO/val2017'
-annFile = 'COCO/annotations/instances_val2017.json'
-coco = CocoDetection(root = root, annFile = annFile)
+#root = 'COCO/val2017'
+#annFile = 'COCO/annotations/instances_val2017.json'
+#coco = CocoDetection(root = root, annFile = annFile)
 #temp = coco.__getitem__(10)
 #npimg = temp[1].numpy()
 #plt.imshow(np.transpose(npimg, (1,2,0)),interpolation='nearest')

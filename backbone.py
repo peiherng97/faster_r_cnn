@@ -17,16 +17,20 @@ class vgg16(object):
 
     def features(self):
         '''remove last layer of maxpool, subsample of 16'''
-        features = list(self.vgg16.features[:-1])
+        features = list(self.vgg16.features)
+        classifier = list(self.vgg16.classifier)
+        features = features[:-1]
+        classifier = classifier[:-1]
         submodel = nn.Sequential(*list(features))
+        hidden = nn.Sequential(*list(classifier))
         num_features_out = 512
-        print(features)
+        num_hidden_out = 4096
         '''Freezing the layers before conv3 following fast r cnn'''
         for layer in range(10):
             for p in submodel[layer].parameters():
                 p.require_grad = False
                 
-        return submodel, num_features_out
+        return submodel, hidden, num_features_out, num_hidden_out
     
     
 class ResNet18(object):
@@ -34,14 +38,15 @@ class ResNet18(object):
         super().__init__()
         self._pretrained = pretrained
         self.resnet18 = torchvision.models.resnet18(pretrained=self._pretrained)
-
+        print(self.resnet18)
     def features(self):
         children = list(self.resnet18.children())
+        print(children)
         layers = children[:-3]
         num_features_out = 256
         hidden = children[-3]
-        num_hidden_out = 512
         print(hidden)
+        num_hidden_out = 512
         for parameters in [layer.parameters() for i, layer in enumerate(layers) if i <=4]:
             for parameter in parameters:
                 parameter.requires_grad = False
@@ -50,5 +55,5 @@ class ResNet18(object):
     
 #model = vgg16()
 #model.features()
-model1 = ResNet18()
-model1.features()
+#model1 = ResNet18()
+#model1.features()
