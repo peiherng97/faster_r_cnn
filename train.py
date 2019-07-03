@@ -7,7 +7,6 @@ Created on Wed Jun 19 14:33:58 2019
 """
 
 import argparse
-import logging
 import os
 import utils
 import matplotlib.pyplot as plt
@@ -22,7 +21,6 @@ from backbone import vgg16
 from model import Model
 from tensorboardX import SummaryWriter
 from extension.lr_scheduler import WarmUpMultiStepLR
-
 
 device = torch.device("cuda:0" if (torch.cuda.is_available()) else "cpu")
 def train(dataset, batch_size, backbone_name, config):
@@ -41,15 +39,18 @@ def train(dataset, batch_size, backbone_name, config):
                           )
     scheduler = WarmUpMultiStepLR(optimizer, milestones=config.STEP_LR_SIZES, gamma=config.STEP_LR_GAMMA,
                               factor=config.WARM_UP_FACTOR, num_iters=config.WARM_UP_NUM_ITERS)
-    
-    
     iter_ = 0
+    
+    time_checkpoint = time.time()
+    losses = deque(maxlen=100)
+    summary_writer = SummaryWriter(os.path.join(path_to_checkpoints_dir, 'summaries'))
+    
+    
     for epoch in range(epochs):
         for _, (_, image_batch, _, bboxes_batch, labels_batch) in enumerate(dataloader):
             img = image_batch.to(device)
             bboxes_gt = bboxes_batch.to(device)
             category_label = labels_batch.to(device)
-            iter_ += 1
             batch_size = img.shape[0]
             model.zero_grad()
             anchor_objectness_losses, anchor_transformer_losses, proposal_class_losses, proposal_transformer_losses = model(img,bboxes_gt,category_label)
@@ -60,6 +61,21 @@ def train(dataset, batch_size, backbone_name, config):
             loss = anchor_objectness_loss + anchor_transformer_loss + proposal_class_loss + proposal_transformer_loss
             loss.backward()
             optimizer.step()
+            losses.append(loss.item())
+            summary_writer.add_scalar('train/anchor_objectness_loss', anchor_objectness_loss.item(), step)
+            summary_writer.add_scalar('train/anchor_transformer_loss', anchor_transformer_loss.item(), step)
+            summary_writer.add_scalar('train/proposal_class_loss', proposal_class_loss.item(), step)
+            summary_writer.add_scalar('train/proposal_transformer_loss', proposal_transformer_loss.item(), step)
+            summary_writer.add_scalar('train/loss', loss.item(), step)
+            iter_ += 1
+            if(iter_ % steps_to_display) == 0:
+                elapsed_time = time.time() - time_checkpoint
+                time_checkpoint = time.time()
+                steps_per_sec = steps_to_display / elapsed_time
+                samples_per_sec = batch_size * steps_per_sec
+                eta = (num_steps_to_finish - step) / steps_per_sec / 3600
+                lr = scheduler.get_lr()[0]
+                
             
 if __name__ == '__main__':
     config = utils.Params('config.json')
