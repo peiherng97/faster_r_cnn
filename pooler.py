@@ -38,5 +38,7 @@ class Pooler(object):
             )
         else:
             raise ValueError
+        pool = F.max_pool2d(input=pool, kernel_size=2, stride=2)
+
         return pool
 

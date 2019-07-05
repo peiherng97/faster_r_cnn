@@ -106,7 +106,7 @@ class Model(nn.Module):
             
         def forward(self, features, proposal_bboxes, gt_classes_batch, gt_bboxes_batch):
             batch_size = features.shape[0]
-            '''assign -1 to all labels first (Not sure why for now)
+            '''assign -1 to all labels ( -1 labels are not used for training)
                calculate iou for proposals with ground truth bboxes
                proposal_assignments contains the highest ranked ground truth bbox for each proposal
                get the maximum iou of each proposal with respect to each ground truth box and store highest ground truth box in proposal assigments

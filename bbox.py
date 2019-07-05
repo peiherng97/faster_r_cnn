@@ -9,14 +9,6 @@ from torch import Tensor
 class BBox(object):
     def __init__(self,left,top,right,bottom):
         super(BBox).__init__()
-        self.left = left
-        self.top = top
-        self.right = right
-        self.bottom = bottom
-
-#    def __repr__(self) -> str:
-#        return 'BBox[l={:.1f}, t={:.1f}, r={:.1f}, b={:.1f}]'.format(
-#            self.left, self.top, self.right, self.bottom)
 
     def tolist(self):
         return [self.left, self.top, self.right, self.bottom]
@@ -74,7 +66,9 @@ class BBox(object):
     def apply_transformer(ori_bboxes, transformers):
         '''
         Applying the transformation to the ori_bboxes
+        ori_bboxes in x1,y1,x2,y2 format
         '''
+
         center_based_ori_bboxes = BBox.to_center_base(ori_bboxes)
         center_based_target_bboxes = torch.stack([
             transformers[..., 0] * center_based_ori_bboxes[..., 2] + center_based_ori_bboxes[..., 0],
@@ -97,7 +91,6 @@ class BBox(object):
         '''
         source, other = source.unsqueeze(dim=-2).repeat(1, 1, other.shape[-2], 1), \
                         other.unsqueeze(dim=-3).repeat(1, source.shape[-2], 1, 1)
-        
         source_area = (source[..., 2] - source[..., 0]) * (source[..., 3] - source[..., 1])
         other_area = (other[..., 2] - other[..., 0]) * (other[..., 3] - other[..., 1])
 
