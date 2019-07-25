@@ -13,7 +13,7 @@ from torch import nn, Tensor
 from torch.nn import functional as F
 from torch.optim import Optimizer
 from torch.optim.lr_scheduler import _LRScheduler
-
+from torch.nn.functional import smooth_l1_loss
 from bbox import BBox
 from extention.functional import beta_smooth_l1_loss
 from pooler import Pooler
@@ -26,7 +26,7 @@ class Model(nn.Module):
     def __init__(self, backbone, num_classes, pooler_mode,
                  anchor_ratios, anchor_sizes,
                  rpn_pre_nms_top_n, rpn_post_nms_top_n,
-                 anchor_smooth_l1_loss_beta, proposal_smooth_l1_loss_beta):
+                 anchor_smooth_l1_loss_beta : Optional[float] = None, proposal_smooth_l1_loss_beta : Optional[float] = None):
         super().__init__()
         self.features, hidden, num_features_out, num_hidden_out = backbone.features()
         self._bn_modules = nn.ModuleList([it for it in self.features.modules() if isinstance(it, nn.BatchNorm2d)] +
@@ -34,17 +34,17 @@ class Model(nn.Module):
         # NOTE: It's crucial to freeze batch normalization modules for few batches training, which can be done by following processes
         #       (1) Change mode to `eval`
         #       (2) Disable gradient (we move this process into `forward`)
-        for bn_module in self._bn_modules:
-            for parameter in bn_module.parameters():
-                parameter.requires_grad = False
+#        for bn_module in self._bn_modules:
+#            for parameter in bn_module.parameters():
+#                parameter.requires_grad = False
 
         self.rpn = RegionProposalNetwork(num_features_out, anchor_ratios, anchor_sizes, rpn_pre_nms_top_n, rpn_post_nms_top_n, anchor_smooth_l1_loss_beta)
         self.detection = Model.Detection(pooler_mode, hidden, num_hidden_out, num_classes, proposal_smooth_l1_loss_beta)
 
-    def forward(self, image_batch, gt_bboxes_batch, gt_classes_batch):
+    def forward(self, image_batch, gt_bboxes_batch : Tensor = None, gt_classes_batch : Tensor = None):
         # disable gradient for each forwarding process just in case model was switched to `train` mode at any time
-        for bn_module in self._bn_modules:
-            bn_module.eval()
+ #       for bn_module in self._bn_modules:
+ #           bn_module.eval()
         '''
         Training mode
         Generate anchor box 
@@ -65,6 +65,7 @@ class Model(nn.Module):
             proposal_classes, proposal_transformers, proposal_class_losses, proposal_transformer_losses = self.detection.forward(features, proposal_bboxes, gt_classes_batch, gt_bboxes_batch)
             return anchor_objectness_losses, anchor_transformer_losses, proposal_class_losses, proposal_transformer_losses
         else:
+            #print('evaluating mode')
             anchor_objectnesses, anchor_transformers = self.rpn.forward(features)
             proposal_bboxes = self.rpn.generate_proposals(anchor_bboxes, anchor_objectnesses, anchor_transformers, image_width, image_height)
             proposal_classes, proposal_transformers = self.detection.forward(features, proposal_bboxes)
@@ -104,7 +105,7 @@ class Model(nn.Module):
             self.hidden = hidden
             self._pooler_mode = pooler 
             
-        def forward(self, features, proposal_bboxes, gt_classes_batch, gt_bboxes_batch):
+        def forward(self, features, proposal_bboxes, gt_classes_batch : Tensor = None ,  gt_bboxes_batch : Tensor = None):
             batch_size = features.shape[0]
             '''assign -1 to all labels ( -1 labels are not used for training)
                calculate iou for proposals with ground truth bboxes
@@ -116,42 +117,56 @@ class Model(nn.Module):
                Take total of 128 proposal samples
                split fg and bg into 0.25 : 0.75 ratio after reshuffling
             '''
-            labels = torch.full((batch_size,proposal_bboxes.shape[1]), -1, dtype=torch.long, device= proposal_bboxes.device)
-            ious = BBox.iou(proposal_bboxes,gt_bboxes_batch)
-            proposal_max_ious, proposal_assignments = ious.max(dim=2)
-            labels[proposal_max_ious < 0.5] = 0
-            fg_masks = proposal_max_ious >= 0.5
-            if len(fg_masks.nonzero()) > 0:
-                labels[fg_masks] = gt_classes_batch[fg_masks.nonzero()[:,0],proposal_assignments[fg_masks]]
-            fg_indices = (labels > 0).nonzero()
-            bg_indices = (labels == 0).nonzero()
-            fg_indices = fg_indices[torch.randperm(len(fg_indices))[:min(len(fg_indices),32*batch_size)]]
-            bg_indices = bg_indices[torch.randperm(len(bg_indices))[:128 * batch_size - len(fg_indices)]]
-            selected_indices = torch.cat([fg_indices,bg_indices],dim=0)
-            ''' selected_indices shape : torch.Size([128, 2]) '''
-            selected_indices = selected_indices[torch.randperm(len(selected_indices))].unbind(dim=1)
+            if not self.training:
+                 proposal_batch_indices = torch.arange(end=batch_size, dtype=torch.long, device=proposal_bboxes.device).view(-1, 1).repeat(1, proposal_bboxes.shape[1])
+                 pool = Pooler.apply(features,torch.squeeze(proposal_bboxes), torch.squeeze(proposal_batch_indices), self._pooler_mode)
+                 hidden = self.hidden(pool)
+                 hidden = F.adaptive_max_pool2d(input=hidden, output_size=1)
+                 hidden = hidden.view(hidden.shape[0],-1)
+                 proposal_classes = self._proposal_class(hidden)
+                 proposal_transformers = self._proposal_transformer(hidden)
+                 proposal_classes = proposal_classes.view(batch_size, -1, proposal_classes.shape[-1])
+                 proposal_transformers = proposal_transformers.view(batch_size, -1, proposal_transformers.shape[-1])
+                 return proposal_classes, proposal_transformers
+            else:
+                labels = torch.full((batch_size,proposal_bboxes.shape[1]), -1, dtype=torch.long, device=proposal_bboxes.device)
+                ious = BBox.iou(proposal_bboxes,gt_bboxes_batch)
+                proposal_max_ious, proposal_assignments = ious.max(dim=2)
+                labels[proposal_max_ious < 0.5] = 0
+                fg_masks = proposal_max_ious >= 0.5
+                if len(fg_masks.nonzero()) > 0:
+                    labels[fg_masks] = gt_classes_batch[fg_masks.nonzero()[:,0],proposal_assignments[fg_masks]]
+
+                fg_indices = (labels > 0).nonzero()
+                bg_indices = (labels == 0).nonzero()
+                fg_indices = fg_indices[torch.randperm(len(fg_indices))[:min(len(fg_indices),32*batch_size)]]
+                bg_indices = bg_indices[torch.randperm(len(bg_indices))[:128 * batch_size - len(fg_indices)]]
+                selected_indices = torch.cat([fg_indices,bg_indices],dim=0)
+                ''' selected_indices shape : torch.Size([128, 2]) '''
+                selected_indices = selected_indices[torch.randperm(len(selected_indices))].unbind(dim=1)
             
-            '''
-            len(selected_indices) = 128
-            Assign ground truth targets of selected indices
-            gt_bboxes are formed by 
-            Apply ROI pooling on the features with proposal_bboxes generated
-            Pass it through a hidden layer, pool and flatten
-            '''
-            proposal_bboxes = proposal_bboxes[selected_indices]
-            gt_bboxes = gt_bboxes_batch[selected_indices[0],proposal_assignments[selected_indices]]
-            gt_proposal_classes = labels[selected_indices]
-            gt_proposal_transformers = BBox.calc_transformer(proposal_bboxes,gt_bboxes)
-            batch_indices = selected_indices[0]
-            pool = Pooler.apply(features, proposal_bboxes, proposal_batch_indices = batch_indices, mode = self._pooler_mode)
-            pool = pool.view(pool.shape[0],-1)
-            hidden = self.hidden(pool)
-#            hidden = F.adaptive_max_pool2d(input=hidden,output_size=1)
-#            hidden = hidden.view(hidden.shape[0],-1)
-            proposal_classes = self._proposal_class(hidden)
-            proposal_transformers = self._proposal_transformer(hidden)
-            proposal_class_losses, proposal_transformer_losses = self.loss(proposal_classes,proposal_transformers,gt_proposal_classes,gt_proposal_transformers,batch_size,batch_indices)
-            return proposal_classes,proposal_transformers, proposal_class_losses, proposal_transformer_losses
+                '''
+                len(selected_indices) = 128
+                Assign ground truth targets of selected indices
+                gt_bboxes are formed by 
+                Apply ROI pooling on the features with proposal_bboxes generated
+                Pass it through a hidden layer, pool and flatten
+                '''
+                proposal_bboxes = proposal_bboxes[selected_indices]
+                gt_bboxes = gt_bboxes_batch[selected_indices[0],proposal_assignments[selected_indices]]
+                gt_proposal_classes = labels[selected_indices]
+                diff_x = torch.min(gt_bboxes[:,2]-gt_bboxes[:,0])
+                diff_y = torch.min(gt_bboxes[:,3]-gt_bboxes[:,1])
+                gt_proposal_transformers = BBox.calc_transformer(proposal_bboxes,gt_bboxes)
+                batch_indices = selected_indices[0]
+                pool = Pooler.apply(features, proposal_bboxes, proposal_batch_indices = batch_indices, mode = self._pooler_mode)
+                hidden = self.hidden(pool)
+                hidden = F.adaptive_max_pool2d(input=hidden, output_size=1)
+                hidden = hidden.view(hidden.shape[0],-1)
+                proposal_classes = self._proposal_class(hidden)
+                proposal_transformers = self._proposal_transformer(hidden)
+                proposal_class_losses, proposal_transformer_losses = self.loss(proposal_classes,proposal_transformers,gt_proposal_classes,gt_proposal_transformers,batch_size,batch_indices)
+                return proposal_classes,proposal_transformers, proposal_class_losses, proposal_transformer_losses
         
         def loss(self,proposal_classes,proposal_transformers,gt_proposal_classes,gt_proposal_transformers,batch_size,batch_indices):
             '''
@@ -169,10 +184,19 @@ class Model(nn.Module):
             for batch_index in range(batch_size):
                 selected_indices = (batch_indices == batch_index).nonzero().view(-1)
                 cross_entropy = F.cross_entropy(input=proposal_classes[selected_indices],target=gt_proposal_classes[selected_indices])
+#                print(selected_indices)
+#                print(gt_proposal_classes)
                 fg_indices = gt_proposal_classes[selected_indices].nonzero().view(-1)
-                smooth_l1_loss = beta_smooth_l1_loss(input=proposal_transformers[selected_indices][fg_indices],target=gt_proposal_transformers[selected_indices][fg_indices],beta=self._proposal_smooth_l1_loss_beta)
+#                print('fg_indices',fg_indices)
+               # with torch.no_grad():
+                smooth_l1_loss_ = beta_smooth_l1_loss(input=proposal_transformers[selected_indices][fg_indices],target=gt_proposal_transformers[selected_indices][fg_indices],beta=self._proposal_smooth_l1_loss_beta)
+               #print(smooth_l1_loss_custom)
+               #print(proposal_transformers[selected_indices][fg_indices])
+               #print(gt_proposal_transformers[selected_indices][fg_indices])
+               #smooth_l1_loss_ = smooth_l1_loss(input=proposal_transformers[selected_indices][fg_indices],target=gt_proposal_transformers[selected_indices][fg_indices])
+                #print(smooth_l1_loss_)
                 cross_entropies[batch_index] = cross_entropy
-                smooth_l1_losses[batch_index] = smooth_l1_loss
+                smooth_l1_losses[batch_index] = smooth_l1_loss_
                 
             return cross_entropies, smooth_l1_losses
         
@@ -186,18 +210,16 @@ class Model(nn.Module):
             CLip detection bboxes so the it wont go out of bounds
             
             '''
-            batch_size = proposal_bboxes.shape[0]
             
+            batch_size = proposal_bboxes.shape[0]
             proposal_transformers = proposal_transformers.view(batch_size,-1,self.num_classes,4)
             transformer_normalize_std = self._transformer_normalize_std.to(device=proposal_transformers.device)
             transformer_normalize_mean = self._transformer_normalize_mean.to(device=proposal_transformers.device)
             proposal_transformers = proposal_transformers * transformer_normalize_std + transformer_normalize_mean
-            
             proposal_bboxes = proposal_bboxes.unsqueeze(dim=2).repeat(1,1,self.num_classes,1)
             detection_bboxes = BBox.apply_transformer(proposal_bboxes,proposal_transformers)
             detection_bboxes = BBox.clip(detection_bboxes, left=0, top=0, right=image_width, bottom=image_height)
             detection_probs = F.softmax(proposal_classes, dim=-1)
-            
             detection_bboxes_list = []
             detection_classes_list = []
             detection_probs_list = []
@@ -206,11 +228,13 @@ class Model(nn.Module):
             '''Class iteration starts from 1, ignore background class (0) '''
             for batch_index in range(batch_size):
                 for class_ in range(1, self.num_classes):
+#                    print(detection_bboxes.shape)
                     class_bboxes = detection_bboxes[batch_index,:,class_,:]
                     class_probs = detection_probs[batch_index,:,class_]
                     threshold = 0.3
                     kept_indices = nms(class_bboxes, class_probs, threshold)
                     class_bboxes = class_bboxes[kept_indices]
+#                    print(class_bboxes.shape)
                     class_probs = class_probs[kept_indices]
                     
                     detection_bboxes_list.append(class_bboxes)
@@ -227,4 +251,4 @@ class Model(nn.Module):
 
                     
                     
-            
+           

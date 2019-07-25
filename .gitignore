@@ -1,4 +1,10 @@
 outputs
+COCO
 support.egg-info
 build
-
+store
+testmodel
+model_resnet101.pth
+inference
+eval
+datadir

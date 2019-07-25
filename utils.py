@@ -142,4 +142,3 @@ def load_checkpoint(checkpoint, model, optimizer=None):
 
     return checkpoint
 
-params = Params("./config.json")

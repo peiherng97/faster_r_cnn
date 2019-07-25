@@ -9,6 +9,10 @@ from torch import Tensor
 class BBox(object):
     def __init__(self,left,top,right,bottom):
         super(BBox).__init__()
+        self.left = left
+        self.top = top
+        self.right = right
+        self.bottom = bottom
 
     def tolist(self):
         return [self.left, self.top, self.right, self.bottom]
@@ -54,8 +58,8 @@ class BBox(object):
         center_based_ori_bboxes = BBox.to_center_base(ori_bboxes)
         center_based_target_bboxes = BBox.to_center_base(target_bboxes)
         transformers = torch.stack([
-            (center_based_target_bboxes[..., 0] - center_based_ori_bboxes[..., 0]) / center_based_target_bboxes[..., 2],
-            (center_based_target_bboxes[..., 1] - center_based_ori_bboxes[..., 1]) / center_based_target_bboxes[..., 3],
+            (center_based_target_bboxes[..., 0] - center_based_ori_bboxes[..., 0]) / center_based_ori_bboxes[..., 2],
+            (center_based_target_bboxes[..., 1] - center_based_ori_bboxes[..., 1]) / center_based_ori_bboxes[..., 3],
             torch.log(center_based_target_bboxes[..., 2] / center_based_ori_bboxes[..., 2]),
             torch.log(center_based_target_bboxes[..., 3] / center_based_ori_bboxes[..., 3])
         ], dim=-1)
@@ -101,7 +105,6 @@ class BBox(object):
         intersection_width = torch.clamp(intersection_right - intersection_left, min=0)
         intersection_height = torch.clamp(intersection_bottom - intersection_top, min=0)
         intersection_area = intersection_width * intersection_height
-
         return intersection_area / (source_area + other_area - intersection_area)
         
     @staticmethod

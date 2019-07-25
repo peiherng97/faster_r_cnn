@@ -4,7 +4,7 @@ import numpy as np
 import torch
 from torch import nn, Tensor
 from torch.nn import functional as F
-
+from torch.nn.functional import smooth_l1_loss
 from bbox import BBox
 from extention.functional import beta_smooth_l1_loss
 from support.layer.nms import nms
@@ -92,17 +92,13 @@ class RegionProposalNetwork(nn.Module):
 
         for batch_index in range(batch_size):
             selected_indices = (batch_indices == batch_index).nonzero().view(-1)
-
             cross_entropy = F.cross_entropy(input=anchor_objectnesses[selected_indices],
                                             target=gt_anchor_objectnesses[selected_indices])
 
             fg_indices = gt_anchor_objectnesses[selected_indices].nonzero().view(-1)
-            smooth_l1_loss = beta_smooth_l1_loss(input=anchor_transformers[selected_indices][fg_indices],
-                                                 target=gt_anchor_transformers[selected_indices][fg_indices],
-                                                 beta=self._anchor_smooth_l1_loss_beta)
-
+            smooth_l1_loss_ = beta_smooth_l1_loss(input=anchor_transformers[selected_indices][fg_indices],target=gt_anchor_transformers[selected_indices][fg_indices],beta = self._anchor_smooth_l1_loss_beta)
             cross_entropies[batch_index] = cross_entropy
-            smooth_l1_losses[batch_index] = smooth_l1_loss
+            smooth_l1_losses[batch_index] = smooth_l1_loss_
 
         return cross_entropies, smooth_l1_losses
 
@@ -127,7 +123,7 @@ class RegionProposalNetwork(nn.Module):
         center_based_anchor_bboxes = np.stack((center_xs, center_ys, widths, heights), axis=1)
         center_based_anchor_bboxes = torch.from_numpy(center_based_anchor_bboxes).float()
         anchor_bboxes = BBox.from_center_base(center_based_anchor_bboxes)
-        
+
         return anchor_bboxes
 
     def generate_proposals(self, anchor_bboxes: Tensor, objectnesses: Tensor, transformers: Tensor, image_width: int, image_height: int) -> Tensor:

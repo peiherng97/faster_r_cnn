@@ -1,0 +1,32 @@
+{
+    "dataset_name" : "COCO/images/train2017",
+    "annFile" : "COCO/annotations/instances_train2017.json",
+    "backbone_name" : "resnet101",
+    "epochs" : 8,
+    "min_size" : 800,
+    "max_size" : 1333,
+    "num_classes" : 92,
+    "anchor_ratios" : [0.5,1,2],
+    "anchor_sizes" : [64,128,256,512],
+       
+    "output_dir" : "./outputs",
+    
+    "RPN_PRE_NMS_TOP_N" : 12000,
+    "RPN_POST_NMS_TOP_N" : 2000,
+    "ANCHOR_SMOOTH_L1_LOSS_BETA" : 1,
+    "PROPOSAL_SMOOTH_L1_LOSS_BETA" : 1.0,
+    
+    "BATCH_SIZE" : 2,
+    "LEARNING_RATE" : 0.001,
+    "MOMENTUM" : 0.9,
+    "WEIGHT_DECAY" : 0.0001,
+    "STEP_LR_SIZES" : [480000, 640000],
+    "STEP_LR_GAMMA" : 0.1,
+    "WARM_UP_FACTOR" : 0.3333,
+    "WARM_UP_NUM_ITERS" : 500,
+
+    "NUM_STEPS_TO_DISPLAY" : 20,
+    "NUM_STEPS_TO_SNAPSHOT" : 10000,
+    "NUM_STEPS_TO_FINISH" : 720000
+    
+}
