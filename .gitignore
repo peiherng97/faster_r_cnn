@@ -8,3 +8,6 @@ model_resnet101.pth
 inference
 eval
 datadir
+c_oco_test.py
+test_dataloader.py
+
